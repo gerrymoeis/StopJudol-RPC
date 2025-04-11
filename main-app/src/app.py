@@ -480,6 +480,24 @@ class MainWindow(QMainWindow):
     
     def delete_selected_comments(self):
         """Delete selected comments"""
+        # Get the authenticated user's channel ID for permission checking
+        try:
+            # Get channel info for the authenticated user
+            response = self.youtube_api.youtube.channels().list(
+                part='id',
+                mine=True
+            ).execute()
+            
+            if 'items' in response and len(response['items']) > 0:
+                my_channel_id = response['items'][0]['id']
+                logging.debug(f"Authenticated user channel ID: {my_channel_id}")
+            else:
+                my_channel_id = None
+                logging.warning("Could not determine authenticated user's channel ID")
+        except Exception as e:
+            my_channel_id = None
+            logging.error(f"Error getting authenticated user's channel ID: {e}")
+        
         # Confirm deletion
         selected_count = 0
         for i in range(self.comments_table.rowCount()):
@@ -492,10 +510,12 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No Selection", "No comments selected for deletion")
             return
         
+        # Add warning about permissions
         confirm = QMessageBox.question(
             self,
             "Confirm Deletion",
-            f"Are you sure you want to delete {selected_count} comments?",
+            f"Are you sure you want to delete {selected_count} comments?\n\n" +
+            "Note: You can only delete comments on your own videos or comments that you made on other videos.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
@@ -508,8 +528,23 @@ class MainWindow(QMainWindow):
             checkbox_cell = self.comments_table.cellWidget(i, 0)
             checkbox = checkbox_cell.findChild(QCheckBox)
             if checkbox.isChecked():
-                comment_id = self.flagged_comments[i]['id']
-                comments_to_delete.append(comment_id)
+                # Log the comment structure for debugging
+                comment_data = self.flagged_comments[i]
+                logging.debug(f"Comment structure: {comment_data.keys()}")
+                logging.debug(f"Snippet structure: {comment_data['snippet'].keys()}")
+                logging.debug(f"TopLevelComment structure: {comment_data['snippet']['topLevelComment'].keys()}")
+                
+                # Get the author channel ID and comment author name for permission checking
+                author_channel_id = comment_data['snippet']['topLevelComment']['snippet']['authorChannelId']['value'] \
+                    if 'authorChannelId' in comment_data['snippet']['topLevelComment']['snippet'] else 'unknown'
+                author_name = comment_data['snippet']['topLevelComment']['snippet']['authorDisplayName']
+                logging.debug(f"Comment by {author_name} (Channel ID: {author_channel_id})")
+                
+                # Get both the commentId and commentThreadId
+                comment_id = comment_data['snippet']['topLevelComment']['id']
+                thread_id = comment_data['id']  # This is the commentThreadId
+                logging.debug(f"Using comment ID: {comment_id} and thread ID: {thread_id} for deletion")
+                comments_to_delete.append((comment_id, thread_id))
         
         # Disable UI during deletion
         self.url_input.setEnabled(False)
@@ -532,34 +567,44 @@ class MainWindow(QMainWindow):
         delete_thread.daemon = True
         delete_thread.start()
     
-    def delete_comments_thread(self, comment_ids):
+    def delete_comments_thread(self, comment_data):
         """Background thread for deleting comments"""
         try:
             deleted_ids = []
-            total = len(comment_ids)
+            marked_as_spam_ids = []
+            total = len(comment_data)
             
-            for i, comment_id in enumerate(comment_ids):
-                success = self.youtube_api.delete_comment(comment_id)
+            for i, (comment_id, thread_id) in enumerate(comment_data):
+                # Try to delete or moderate the comment
+                action_type, success = self.youtube_api.delete_comment(comment_id, thread_id)
+                
                 if success:
-                    deleted_ids.append(comment_id)
+                    if action_type == 'deleted':
+                        deleted_ids.append(comment_id)
+                    elif action_type == 'marked_as_spam':
+                        marked_as_spam_ids.append(comment_id)
                 
                 # Update progress
                 self.progress_update.emit(i + 1, total)
             
-            self.delete_completed.emit(deleted_ids)
+            # Send both lists to the completed signal
+            self.delete_completed.emit([deleted_ids, marked_as_spam_ids])
             
         except Exception as e:
             logging.error(f"Error deleting comments: {e}")
             self.delete_error.emit(str(e))
     
     @pyqtSlot(list)
-    def on_delete_completed(self, deleted_ids):
+    def on_delete_completed(self, result_data):
         """Handle completion of comment deletion"""
-        # Remove deleted comments from table
+        # Unpack result data (deleted_ids, marked_as_spam_ids)
+        deleted_ids, marked_as_spam_ids = result_data
+        
+        # Remove deleted and marked as spam comments from table
         rows_to_remove = []
         for i in range(self.comments_table.rowCount()):
-            comment_id = self.flagged_comments[i]['id']
-            if comment_id in deleted_ids:
+            comment_id = self.flagged_comments[i]['snippet']['topLevelComment']['id']
+            if comment_id in deleted_ids or comment_id in marked_as_spam_ids:
                 rows_to_remove.append(i)
         
         # Remove rows in reverse order to avoid index shifting
@@ -585,13 +630,23 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         
         # Update status
-        self.status_bar.showMessage(f"Successfully deleted {len(deleted_ids)} comments")
+        total_processed = len(deleted_ids) + len(marked_as_spam_ids)
+        self.status_bar.showMessage(f"Processed {total_processed} comments ({len(deleted_ids)} deleted, {len(marked_as_spam_ids)} marked as spam)")
+        
+        # Prepare detailed message
+        message = ""
+        if deleted_ids:
+            message += f"Successfully deleted {len(deleted_ids)} comments.\n\n"
+        if marked_as_spam_ids:
+            message += f"Marked {len(marked_as_spam_ids)} comments as spam.\n\n"
+            message += "Note: Comments marked as spam will be reviewed by YouTube's system and may not be immediately removed. "
+            message += "This is a limitation of YouTube's API for comments that you didn't create yourself."
         
         # Show success message
         QMessageBox.information(
             self,
-            "Deletion Complete",
-            f"Successfully deleted {len(deleted_ids)} comments"
+            "Action Complete",
+            message
         )
     
     @pyqtSlot(str)
