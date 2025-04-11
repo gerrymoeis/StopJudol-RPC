@@ -1,0 +1,25 @@
+{
+    "blacklist": [
+        "judi online", "slot online", "togel", "casino online",
+        "situs judi", "agen judi", "bandar judi", "poker online",
+        "situs slot", "slot gacor", "slot maxwin", "slot demo",
+        "rtp slot", "bocoran slot", "link alternatif", "bonus new member",
+        "daftar", "login", "deposit", "withdraw", "jackpot", "maxwin",
+        "whatsapp", "wa:", "telegram", "hubungi", "kontak", "contact",
+        "dm for", "dm me", "direct message", "wa.me",
+        "make money fast", "work from home", "earn money online",
+        "click here", "free money", "get rich quick", "earn $",
+        "game slot", "slot game", "course", "class", "gacor", "jp", "maxwin",
+        "jackpot", "spin", "rtp", "bonus", "deposit", "withdraw"
+    ],
+    "whitelist": [
+        "video game", "game review",
+        "tutorial", "review", "critique", "analysis",
+        "educational", "learning"
+    ],
+    "settings": {
+        "auto_delete": false,
+        "check_interval_seconds": 0,
+        "max_comments_per_scan": 500
+    }
+}
