@@ -1,6 +1,6 @@
 # StopJudol - Moderator Komentar YouTube (JSON-RPC Edition)
 
-![StopJudol Logo](main-app/assets/icons/app_icon.ico)
+![StopJudol Logo](stopjudol/assets/icons/app_icon.ico)
 
 ## Tentang Aplikasi
 
