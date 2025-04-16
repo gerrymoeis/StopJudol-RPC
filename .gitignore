@@ -11,10 +11,14 @@ release/
 *.exe
 *.egg-info/
 
+# Configuration files
+config/
+
 # Virtual environments
 env/
 venv/
 ENV/
+.env
 
 # PyInstaller
 *.manifest
